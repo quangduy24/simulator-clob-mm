@@ -197,12 +197,15 @@ seq, owner, type LIMIT/MARKET}`.
 ```
 
 Thanh khoản: lệnh nền **BASE** (3 tầng mỗi phía mỗi sổ quanh fair) +
-**quote của các MM đang bật** (◈: BUY `bidP` / SELL `askP`, size 50, chỉ HĐ YES).
+**quote của các MM đang bật**:
+- **MM-A, B, C**: Quote BUY `bidP` / SELL `askP` (size 50, HĐ YES, ký hiệu ◈).
+- **MM-D (CLOB MM)**: Quote đa tầng (ladder quoting $k = 1 \dots \text{Levels}$) trên **cả 2 sổ YES và NO**, lệch tồn kho theo $r_D = \text{clamp}(fair - q_D \cdot \gamma_D \cdot 0.08)$, tham số điều chỉnh: $\delta$ (spread), Tầng (levels), Size/tầng, $\gamma$.
+- **Ghost Asks (Implied)**: Sổ lệnh tự động tổng hợp thanh khoản chéo (Bid NO $\to$ Ghost Ask YES @ $1-p$; Bid YES $\to$ Ghost Ask NO @ $1-p$) gắn nhãn `Ghost` / `+N 👻` viền nét đứt.
 Mỗi tick (nếu checkbox peg bật) làm mới BASE+MM theo fair/H(t) mới,
 **giữ nguyên lệnh ★ của USER**. Nút Reset dựng lại toàn bộ sổ.
 
-UI đặt lệnh: HĐ (YES/NO) · Side (BUY/SELL) · Kiểu (LIMIT/MARKET) · Price · Size ·
-Place · Hủy theo id · sổ hiển thị gộp theo mức giá (size cộng dồn, ×n lệnh).
+UI đặt lệnh & MM-D: Param δ/Tầng/Size/γ · HĐ (YES/NO) · Side (BUY/SELL) · Kiểu (LIMIT/MARKET) · Price · Size ·
+Place · Hủy theo id · sổ hiển thị gộp theo mức giá (size cộng dồn, ×n lệnh, gắn nhãn MM & Ghost).
 
 ### M · Merge Arb (chiến lược Polymarket Y+N=1, mặc định bật)
 

@@ -39,6 +39,9 @@ table.hud td:first-child,table.hud th:first-child{text-align:left;color:var(--su
 .bcol h3{margin:0 0 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub)}
 .orow{display:flex;justify-content:space-between;padding:2px 7px;border-radius:4px;margin:2px 0;background:#101018;border:1px solid #1e1e28}
 .orow.mine{border-color:var(--gold)}
+.orow.ghost{border-style:dashed;border-color:rgba(201,169,106,.45);background:rgba(201,169,106,.05)}
+.tag-ghost{display:inline-block;font-size:9.5px;padding:0 4px;border-radius:3px;background:rgba(201,169,106,.16);color:var(--gold2);margin-left:4px}
+.tag-mm{display:inline-block;font-size:9.5px;padding:0 4px;border-radius:3px;background:rgba(255,255,255,.08);color:#ece5d8;margin-left:4px}
 .spread{text-align:center;font-size:11px;letter-spacing:.08em;color:var(--gold2);border-top:1px solid var(--line2);border-bottom:1px solid var(--line2);padding:3px;margin:5px 0}
 #depthCv{width:100%;height:220px;background:transparent;border:1px solid var(--line2);border-radius:8px}
 #log{list-style:none;margin:0;padding:0;max-height:150px;overflow:auto;font-size:11.5px;color:var(--sub)}
@@ -74,12 +77,14 @@ footer{color:var(--sub);font-size:11px;letter-spacing:.03em;padding:6px 2px}
 <button class="tgl on" id="tgA">A · Poisson</button>
 <button class="tgl" id="tgB">B · Normal</button>
 <button class="tgl on" id="tgC">C · A–S</button>
-<button class="tgl" id="tgD">D · CLOB</button>
+<button class="tgl on" id="tgD">D · CLOB</button>
 <button class="tgl on" id="tgM">M · Merge Arb</button>
 <span style="width:12px"></span>
 <button class="tgl" data-mv="prob">%</button>
 <button class="tgl" data-mv="odds">Odds</button>
 <button class="tgl on" data-mv="both">% + Odds</button>
+<span style="margin-left:auto"></span>
+<button id="resetAllBtn" style="border-color:var(--gold);color:var(--gold2);font-weight:600">↺ Reset Toàn Bộ</button>
 </div>
 <div class="row" style="margin-top:10px" id="pA">
 <label>xG A</label><input type="number" id="axg" value="1.8" min="0.5" max="3.5" step="0.1" style="width:64px">
@@ -100,13 +105,18 @@ footer{color:var(--sub);font-size:11px;letter-spacing:.03em;padding:6px 2px}
 <span class="note kv" id="slipInfo"></span>
 </div>
 <div class="row" style="margin-top:8px" id="pD">
+<label>δ spread</label><input type="number" id="dDelta" value="0.02" min="0.005" max="0.1" step="0.005" style="width:60px">
+<label>Tầng</label><input type="number" id="dLevels" value="3" min="1" max="5" step="1" style="width:50px">
+<label>Size/tầng</label><input type="number" id="dSize" value="40" min="5" max="200" step="5" style="width:58px">
+<label>γ</label><input type="number" id="dGamma" value="0.04" min="0.01" max="0.2" step="0.01" style="width:58px">
+<span class="note" style="margin:0 4px">| Lệnh tay:</span>
 <select id="dcon"><option>YES</option><option>NO</option></select>
 <select id="dside"><option>BUY</option><option>SELL</option></select>
 <select id="dtype"><option>LIMIT</option><option>MARKET</option></select>
-<input type="number" id="dprice" value="0.5" min="0.01" max="0.99" step="0.01" style="width:64px" title="Price">
-<input type="number" id="dsize" value="20" min="1" max="200" step="1" style="width:64px" title="Size">
+<input type="number" id="dprice" value="0.5" min="0.01" max="0.99" step="0.01" style="width:56px" title="Price">
+<input type="number" id="dsize" value="20" min="1" max="200" step="1" style="width:52px" title="Size">
 <button id="placeBtn">Place</button>
-<select id="cancelSel" style="min-width:140px"></select><button id="cancelBtn">Hủy</button>
+<select id="cancelSel" style="min-width:120px"></select><button id="cancelBtn">Hủy</button>
 <button id="bookResetBtn">Reset</button>
 <label class="note"><input type="checkbox" id="pegChk" checked> Neo fair</label>
 </div>
@@ -122,7 +132,7 @@ footer{color:var(--sub);font-size:11px;letter-spacing:.03em;padding:6px 2px}
 <div class="card"><h2>Timeline</h2>
 <div class="row">
 <button id="toOpen">|◀</button><button id="stepB">◀</button>
-<button id="playBtn" class="on">▶</button><button id="stepF">▶</button><button id="toClose">▶|</button>
+<button id="playBtn">▶ Play</button><button id="stepF">▶</button><button id="toClose">▶|</button>
 <select id="speed"><option value="700">0.5×</option><option value="350" selected>1×</option><option value="120">3×</option><option value="40">Max</option></select>
 <input type="range" id="scrub" min="0" max="100" value="0" style="flex:1;min-width:200px">
 <span class="note kv" id="tickInfo"></span>
@@ -176,7 +186,7 @@ footer{color:var(--sub);font-size:11px;letter-spacing:.03em;padding:6px 2px}
 <table class="hud" id="hud"></table>
 <div class="row" style="margin-top:8px">
 <select id="entrySel"><option value="open">Open</option><option value="cur" selected>Now</option></select>
-<select id="entryMM"><option value="A">A</option><option value="B">B</option><option value="C" selected>C</option></select>
+<select id="entryMM"><option value="A">A</option><option value="B">B</option><option value="C" selected>C</option><option value="D">D</option></select>
 <button id="settleBtn">Tất toán</button>
 <span id="settleOut" class="kv"></span>
 </div>
@@ -209,7 +219,7 @@ function fmtT(s){return s?s.slice(0,4)+"-"+s.slice(4,6)+"-"+s.slice(6,8)+" "+s.s
 function r2(x){return Math.round(x*100)/100;}
 function $(id){return document.getElementById(id);}
 /* ================= state ================= */
-var S={mi:0,idx:0,playing:true,timer:null,
+var S={mi:0,idx:0,playing:false,timer:null,
 active:{A:true,B:false,C:true,D:true,M:true},mv:"both",
 inv:0,gamma:0.05,slip:0,
 book:{YES:{bids:[],asks:[]},NO:{bids:[],asks:[]}},tape:[],pos:{YES:0,NO:0},
@@ -247,6 +257,21 @@ bidP:1/bidO,askP:1/askO};}
 function modelC(fair,q,g){var r=clamp(fair-q*g*0.08,0.02,0.98);
 var hs=0.02+g*0.1,bid=clamp(r-hs,0.01,0.99),ask=clamp(r+hs,0.01,0.99);
 return {mid:r,bidP:bid,askP:ask,back:1/ask,lay:1/bid,hs:hs};}
+function modelD(fair,q,g,delta,levels,sizeLvl){
+delta=delta||0.02;levels=levels||3;sizeLvl=sizeLvl||40;g=g||0.04;
+var r=clamp(fair-(q||0)*g*0.08,0.03,0.97);
+var hs=delta;
+var bY=[],aY=[],bN=[],aN=[];
+for(var k=0;k<levels;k++){
+var off=hs+k*delta;
+var by=clamp(r2(r-off),0.01,0.99),ay=clamp(r2(r+off),0.01,0.99);
+bY.push(by);aY.push(ay);
+bN.push(clamp(r2(1-ay),0.01,0.99));
+aN.push(clamp(r2(1-by),0.01,0.99));
+}
+var bestBid=bY[0],bestAsk=aY[0];
+return {mid:r,bidP:bestBid,askP:bestAsk,back:1/bestAsk,lay:1/bestBid,hs:hs,
+bidsY:bY,asksY:aY,bidsN:bN,asksN:aN,levels:levels,size:sizeLvl};}
 /* ================= CLOB chuẩn =================
    2 sổ YES/NO, mỗi sổ có bids + asks. Lệnh: {id,c,side,price,size,left,seq,owner,type}.
    - Ưu tiên giá → thời gian (seq).
@@ -335,11 +360,31 @@ S.book.YES.asks.push(mkOrd("YES","SELL",f+d,s,"BASE"));
 S.book.NO.bids.push(mkOrd("NO","BUY",(1-f)-d,s,"BASE"));
 S.book.NO.asks.push(mkOrd("NO","SELL",(1-f)+d,s,"BASE"));}
 sortBook("YES");sortBook("NO");}
+function postClobQuotes(){
+dropOwner("MM-D");
+var f=fairAt(S.idx);
+var pD=S.pnl["MM-D"],qD=pD?(pD.YES.b-pD.YES.s):0;
+var delta=parseFloat($("dDelta")?$("dDelta").value:0.02)||0.02;
+var lvls=parseInt($("dLevels")?$("dLevels").value:3,10)||3;
+var sz=parseInt($("dSize")?$("dSize").value:40,10)||40;
+var gam=parseFloat($("dGamma")?$("dGamma").value:0.04)||0.04;
+var v=modelD(f,qD,gam,delta,lvls,sz);
+var n=0;
+for(var k=0;k<v.bidsY.length;k++){
+S.book.YES.bids.push(mkOrd("YES","BUY",v.bidsY[k],sz,"MM-D"));
+S.book.YES.asks.push(mkOrd("YES","SELL",v.asksY[k],sz,"MM-D"));
+S.book.NO.bids.push(mkOrd("NO","BUY",v.bidsN[k],sz,"MM-D"));
+S.book.NO.asks.push(mkOrd("NO","SELL",v.asksN[k],sz,"MM-D"));
+n+=4;
+}
+return n;
+}
 function postMMQuotes(){var q=mmQuotes(),n=0;
 [["A","MM-A"],["B","MM-B"],["C","MM-C"]].forEach(function(p){
 dropOwner(p[1]);var v=q.q[p[0]];if(!v)return;
 S.book.YES.bids.push(mkOrd("YES","BUY",v.bidP,50,p[1]));
 S.book.YES.asks.push(mkOrd("YES","SELL",v.askP,50,p[1]));n+=2;});
+if(S.active.D) n+=postClobQuotes();
 if(S.active.M) n+=postMergeQuotes();
 sortBook("YES");sortBook("NO");return n;}
 function postMergeQuotes(){
@@ -582,9 +627,13 @@ og.appendChild(o);});sel.appendChild(og);});
 // default: Bournemouth half-win demo nếu có
 var dflt=0;MATCHES.forEach(function(m,i){if(m.id.indexOf("2591088")>=0)dflt=i;});
 sel.value=dflt;S.mi=dflt;}
-function loadMatch(i,keepIdx){S.mi=i;S.idx=keepIdx||0;S.inv=parseFloat($("inv").value)||0;S.slip=0;
+function loadMatch(i,keepIdx){stopT();
+S.mi=i;S.idx=keepIdx||0;S.inv=parseFloat($("inv").value)||0;S.slip=0;
 S.pnl={};S.statOrd=0;S.statFill=0;S.eqH={};S.netH={};S.statDir={BY:0,SY:0,BN:0,SN:0};
-resetBookAll();renderAll();
+resetBookAll();
+if($("playBtn")){$("playBtn").textContent="▶ Play";$("playBtn").classList.remove("on");}
+S.playing=false;
+renderAll();
 var m=cur();
 $("matchMeta").textContent=m.league+" · FT "+m.ft+" (HT "+m.ht+") · "+m.n+" ticks · "+m.n_H+" line · "+fmtT(m.t_open)+" → "+fmtT(m.t_close);
 $("lineNote").textContent="Line H trong trận: ["+m.dH.join(", ")+"] · open H="+m.H_open+" (p="+m.p_open+") · close H="+m.H_close+" (p="+m.p_close+") · tất toán close-line: "+settleLabel(m.settle);
@@ -622,15 +671,19 @@ return '<polyline fill="none" stroke="'+color+'" stroke-width="'+width+'" points
 var F=[],A=[],B=[],C=[],D=[];
 var ax=parseFloat($("axg").value),bx=parseFloat($("bxg").value),sk=parseFloat($("skew").value)||0;
 var mu=parseFloat($("mu").value),vr=parseFloat($("vari").value);
+var dDel=parseFloat($("dDelta")?$("dDelta").value:0.02)||0.02,dGam=parseFloat($("dGamma")?$("dGamma").value:0.04)||0.04;
 for(i=0;i<n;i++){var f=fairAt(i),h=tl[i].H,hl=-h;F.push(f);
 if(S.active.A)A.push(modelA(ax,bx,sk,hl).mid);else A.push(NaN);
 if(S.active.B)B.push(modelB(mu,vr,hl).mid);else B.push(NaN);
-if(S.active.C)C.push(modelC(f,S.inv,S.gamma).mid);else C.push(NaN);}
-// D mid: dùng best hiện tại hằng số theo trục (vẽ đoạn tại idx) — bỏ qua đường D
+if(S.active.C)C.push(modelC(f,S.inv,S.gamma).mid);else C.push(NaN);
+if(S.active.D){var qDi=(S.netH[i]&&S.netH[i]["MM-D"])?S.netH[i]["MM-D"].y:0;
+D.push(modelD(f,qDi,dGam,dDel,1,40).mid);}else D.push(NaN);
+}
 s+=line(F,"#ece5d8",2);
 if(S.active.B)s+=line(B,"#7aa8ff",1.6);
 if(S.active.A)s+=line(A,"#3ddc97",1.6);
 if(S.active.C)s+=line(C,"#b48cff",1.6);
+if(S.active.D)s+=line(D,"#ff9a4d",1.6);
 // cursor
 var cx=X(S.idx,n);
 s+='<line x1="'+cx+'" y1="'+PT+'" x2="'+cx+'" y2="'+(Ht-PB)+'" stroke="#fff" stroke-width="1" opacity="0.7"/>';
@@ -642,36 +695,61 @@ var L='<span class="dot" style="background:#fff"></span>fair (median sharp) '+
 if(S.active.A)L+='<span class="dot" style="background:#3ddc97"></span>A Poisson ';
 if(S.active.B)L+='<span class="dot" style="background:#7aa8ff"></span>B Normal ';
 if(S.active.C)L+='<span class="dot" style="background:#b48cff"></span>C A–S ';
+if(S.active.D)L+='<span class="dot" style="background:#ff9a4d"></span>D CLOB ';
 $("legend").innerHTML=L;}
 function mmQuotes(){var t=tick(),f=fairAt(S.idx),hl=-t.H,out={};
 var ax=parseFloat($("axg").value),bx=parseFloat($("bxg").value),sk=parseFloat($("skew").value)||0;
 if(S.active.A)out.A=modelA(ax,bx,sk,hl);
 if(S.active.B)out.B=modelB(parseFloat($("mu").value),parseFloat($("vari").value),hl);
 if(S.active.C)out.C=modelC(f,S.inv,S.gamma);
+if(S.active.D){
+var pD=S.pnl["MM-D"],qD=pD?(pD.YES.b-pD.YES.s):0;
+var delta=parseFloat($("dDelta")?$("dDelta").value:0.02)||0.02;
+var lvls=parseInt($("dLevels")?$("dLevels").value:3,10)||3;
+var sz=parseInt($("dSize")?$("dSize").value:40,10)||40;
+var gam=parseFloat($("dGamma")?$("dGamma").value:0.04)||0.04;
+out.D=modelD(f,qD,gam,delta,lvls,sz);
+}
 return {q:out,fair:f,H:t.H};}
 function renderBook(){
-function lvl(list,asc){var m={},o=[],i;
+function lvl(list,asc,ghostList){var m={},o=[],i;
 for(i=0;i<list.length;i++){var x=list[i],k=x.price.toFixed(2);
-if(!m[k]){m[k]={price:x.price,size:0,n:0,mine:false,mm:false};o.push(m[k]);}
+if(!m[k]){m[k]={price:x.price,size:0,n:0,mine:false,mm:"",isGhost:false,ghostSize:0};o.push(m[k]);}
 m[k].size=r2(m[k].size+x.left);m[k].n++;if(x.owner==="USER")m[k].mine=true;
-if(x.owner.indexOf("MM-")===0)m[k].mm=true;}
+if(x.owner&&x.owner.indexOf("MM-")===0){
+var mmCode=x.owner.replace("MM-","");
+if(m[k].mm.indexOf(mmCode)<0)m[k].mm+=(m[k].mm?" ":"")+mmCode;}
+}
+if(ghostList){
+for(i=0;i<ghostList.length;i++){var g=ghostList[i],gk=g.price.toFixed(2);
+if(!m[gk]){m[gk]={price:g.price,size:0,n:0,mine:false,mm:"",isGhost:true,ghostSize:0};o.push(m[gk]);}
+m[gk].size=r2(m[gk].size+g.size);m[gk].ghostSize=r2(m[gk].ghostSize+g.size);m[gk].n++;}
+}
 o.sort(function(a,b){return asc?a.price-b.price:b.price-a.price;});return o;}
-function col(el,bids,asks,title,color){
-var askL=lvl(asks,true).slice(0,6),bidL=lvl(bids,false).slice(0,8);
+function col(el,bids,asks,ghostBids,ghostAsks,title,color){
+var askL=lvl(asks,true,ghostAsks).slice(0,6),bidL=lvl(bids,false,ghostBids).slice(0,8);
 var h="<h3 style='color:"+color+"'>"+title+"</h3><div>";
 askL.forEach(function(a){
-h+='<div class="orow"><span>$'+a.price.toFixed(2)+(a.mm?" ◈":"")+'</span><span>'+a.size+(a.n>1?" ×"+a.n:"")+'</span></div>';});
+var ghostBadge=a.isGhost?'<span class="tag-ghost">Ghost</span>':(a.ghostSize>0?'<span class="tag-ghost">+'+a.ghostSize+' 👻</span>':"");
+var mmBadge=a.mm?'<span class="tag-mm">◈'+a.mm+'</span>':"";
+h+='<div class="orow'+(a.isGhost?" ghost":"")+'"><span>$'+a.price.toFixed(2)+ghostBadge+mmBadge+'</span><span>'+a.size+(a.n>1?" ×"+a.n:"")+'</span></div>';});
 h+="</div>";
 var bb=bidL[0],aa=askL[0];
 h+='<div class="spread">BID '+(bb?("$"+bb.price.toFixed(2)):"—")+" · ASK "+(aa?("$"+aa.price.toFixed(2)):"—")+
 ((bb&&aa)?(" · SPR "+(aa.price-bb.price).toFixed(2)):"")+"</div><div>";
 bidL.forEach(function(x){
-h+='<div class="orow'+(x.mine?" mine":"")+'"><span>$'+x.price.toFixed(2)+(x.mine?" ★":"")+(x.mm?" ◈":"")+'</span><span>'+x.size+(x.n>1?" ×"+x.n:"")+'</span></div>';});
+var ghostBadge=x.isGhost?'<span class="tag-ghost">Ghost</span>':(x.ghostSize>0?'<span class="tag-ghost">+'+x.ghostSize+' 👻</span>':"");
+var mmBadge=x.mm?'<span class="tag-mm">◈'+x.mm+'</span>':"";
+h+='<div class="orow'+(x.mine?" mine":"")+(x.isGhost?" ghost":"")+'"><span>$'+x.price.toFixed(2)+(x.mine?" ★":"")+ghostBadge+mmBadge+'</span><span>'+x.size+(x.n>1?" ×"+x.n:"")+'</span></div>';});
 h+="</div>";el.innerHTML=h;}
-col($("bookYes"),S.book.YES.bids,S.book.YES.asks,
-"YES · "+S.book.YES.bids.length+"/"+S.book.YES.asks.length,"#3ddc97");
-col($("bookNo"),S.book.NO.bids,S.book.NO.asks,
-"NO · "+S.book.NO.bids.length+"/"+S.book.NO.asks.length,"#7aa8ff");
+var ghostAsksYES=S.book.NO.bids.map(function(o){return {price:r2(1-o.price),size:o.left};});
+var ghostBidsYES=S.book.NO.asks.map(function(o){return {price:r2(1-o.price),size:o.left};});
+var ghostAsksNO=S.book.YES.bids.map(function(o){return {price:r2(1-o.price),size:o.left};});
+var ghostBidsNO=S.book.YES.asks.map(function(o){return {price:r2(1-o.price),size:o.left};});
+col($("bookYes"),S.book.YES.bids,S.book.YES.asks,ghostBidsYES,ghostAsksYES,
+"YES · "+S.book.YES.bids.length+"/"+S.book.YES.asks.length+(ghostAsksYES.length?" (+"+ghostAsksYES.length+" 👻)":""),"#3ddc97");
+col($("bookNo"),S.book.NO.bids,S.book.NO.asks,ghostBidsNO,ghostAsksNO,
+"NO · "+S.book.NO.bids.length+"/"+S.book.NO.asks.length+(ghostAsksNO.length?" (+"+ghostAsksNO.length+" 👻)":""),"#7aa8ff");
 var q=mmQuotes(),strip=[];
 Object.keys(q.q).forEach(function(k){var v=q.q[k];
 strip.push(k+": Back "+v.back.toFixed(2)+" / Lay "+v.lay.toFixed(2));});
@@ -720,7 +798,13 @@ function vline(p,color,lbl,y){ctx.strokeStyle=color;ctx.lineWidth=1.5;
 ctx.beginPath();ctx.moveTo(sx(p),mt-8);ctx.lineTo(sx(p),mt+ih);ctx.stroke();
 ctx.fillStyle=color;ctx.textAlign="center";ctx.fillText(lbl,sx(p),y);}
 vline(f,"#8a8578","fair "+f.toFixed(2),mt-12);
-vline(qc.mid,"#b48cff","C r "+qc.mid.toFixed(3)+" ["+qc.bidP.toFixed(2)+"–"+qc.askP.toFixed(2)+"]",mt-1);}
+vline(qc.mid,"#b48cff","C r "+qc.mid.toFixed(3)+" ["+qc.bidP.toFixed(2)+"–"+qc.askP.toFixed(2)+"]",mt-1);
+if(S.active.D){
+var pD=S.pnl["MM-D"],qD=pD?(pD.YES.b-pD.YES.s):0;
+var dDel=parseFloat($("dDelta")?$("dDelta").value:0.02)||0.02,dGam=parseFloat($("dGamma")?$("dGamma").value:0.04)||0.04;
+var qd=modelD(f,qD,dGam,dDel,1,40);
+vline(qd.mid,"#ff9a4d","D mid "+qd.mid.toFixed(3)+" ["+qd.bidP.toFixed(2)+"–"+qd.askP.toFixed(2)+"]",mt+10);
+}}
 function renderHUD(){var t=tick(),m=cur(),f=fairAt(S.idx),q=mmQuotes();
 var hg=parseInt(m.ft.split("-")[0],10),ag=parseInt(m.ft.split("-")[1],10);
 var rows=[["Tick","<span class='kv'>"+S.idx+"/"+(m.tl.length-1)+" · "+fmtT(t.t)+"</span>"],
@@ -781,7 +865,7 @@ $("botStats").textContent="bots="+S.bots.length+" (on="+(S.botsOn?"yes":"no")+")
 " · BUY YES "+S.statDir.BY+" · SELL YES "+S.statDir.SY+" · BUY NO "+S.statDir.BN+" · SELL NO "+S.statDir.SN;
 renderEq();renderBars();renderInv();
 $("mInfo").textContent="M: Y"+S.mDesk.Y+" N"+S.mDesk.N+" cash"+r2(S.mDesk.cash)+" · eq "+mergeEquity(f).toFixed(1)+"u · arb"+S.mDesk.arb+" recyc"+S.mDesk.recyc+" · q="+(S.mDesk.Y- S.mDesk.N);}
-var EQCOL={"MM-A":"#3ddc97","MM-B":"#7aa8ff","MM-C":"#b48cff","MM-M":"#c9a96a","BOTS":"#ff9a4d","USER":"#ece5d8","BASE":"#3f3f4c"};
+var EQCOL={"MM-A":"#3ddc97","MM-B":"#7aa8ff","MM-C":"#b48cff","MM-D":"#ff9a4d","MM-M":"#c9a96a","BOTS":"#d9a441","USER":"#ece5d8","BASE":"#3f3f4c"};
 function eqColor(k){if(EQCOL[k])return EQCOL[k];
 var h=0;for(var i=0;i<k.length;i++)h=(h*31+k.charCodeAt(i))%360;
 return "hsl("+h+",60%,65%)";}
@@ -851,7 +935,7 @@ $("barsNote").textContent="Settled @close P_YES="+py.P.toFixed(2)+" ("+py.note+"
 function renderInv(){var svg=$("invSvg"),m=cur(),n=m.tl.length;
 var W3=720,H3=110,L=56,R=14,T=10,B=20;
 function X3(i){return L+(i/Math.max(1,n-1))*(W3-L-R);}
-var owners=["MM-A","MM-B","MM-C","MM-M"].filter(function(k){return k==="MM-M"?S.active.M : S.pnl[k];});
+var owners=["MM-A","MM-B","MM-C","MM-D","MM-M"].filter(function(k){return k==="MM-M"?S.active.M : (k==="MM-D"?S.active.D : S.pnl[k]);});
 var vals=[],i,series={},last={};
 owners.forEach(function(k){series[k]=[];});
 for(i=0;i<=S.idx;i++){var sn=S.netH[i];
@@ -864,7 +948,7 @@ last[k]=v;series[k].push(v);vals.push(v);
 var v=(sn&&sn[k])?sn[k].y:(last[k]!=null?last[k]:0);
 last[k]=v;series[k].push(v);vals.push(v);}});}
 if(!owners.length){svg.innerHTML='<rect x="0" y="0" width="'+W3+'" height="'+H3+'" fill="#0b0b11"/>'+
-'<text x="'+(W3/2)+'" y="'+(H3/2)+'" fill="#8a8578" font-size="11" text-anchor="middle">MM chưa có fills — bật logic A/B/C + bots rồi Play</text>';
+'<text x="'+(W3/2)+'" y="'+(H3/2)+'" fill="#8a8578" font-size="11" text-anchor="middle">MM chưa có fills — bật logic A/B/C/D/M + bots rồi Play</text>';
 $("invLegend").textContent="";return;}
 var mn=Math.min.apply(null,vals.concat([0])),mx=Math.max.apply(null,vals.concat([0]));
 if(mx-mn<1e-6){mx+=1;mn-=1;}var pad=(mx-mn)*0.15;mx+=pad;mn-=pad;
@@ -898,7 +982,9 @@ var ei=which==="open"?0:S.idx,et=m.tl[ei],hl=-et.H;
 var q;
 if(mmk==="A")q=modelA(parseFloat($("axg").value),parseFloat($("bxg").value),parseFloat($("skew").value)||0,hl);
 else if(mmk==="B")q=modelB(parseFloat($("mu").value),parseFloat($("vari").value),hl);
-else q=modelC(fairAt(ei),S.inv,S.gamma);
+else if(mmk==="C")q=modelC(fairAt(ei),S.inv,S.gamma);
+else{var dDel=parseFloat($("dDelta")?$("dDelta").value:0.02)||0.02,dGam=parseFloat($("dGamma")?$("dGamma").value:0.04)||0.04;
+q=modelD(fairAt(ei),0,dGam,dDel,1,40);}
 var hkOdds=q.back-1; // decimal→HK
 var hg=parseInt(m.ft.split("-")[0],10),ag=parseInt(m.ft.split("-")[1],10);
 var mult=settleMult(hg,ag,hl);
@@ -959,14 +1045,72 @@ p_open:rows[0].p,p_close:rows[rows.length-1].p,n_H:dH.length,dH:dH,
 settle:null,tl:rows.map(function(r){return {t:r.t,H:r.H,hh:r.hh,ha:r.ha,p:r.p,s:r.s};})};
 try{var fts=ft0.split("-");m.settle=settleMult(parseInt(fts[0],10),parseInt(fts[1],10),-m.H_close);}catch(e){}
 return m;}
+/* ================= reset all params & cash ================= */
+function resetAll(){
+stopT();
+$("axg").value="1.8";$("bxg").value="1.1";$("skew").value="0";
+if($("fitInfo"))$("fitInfo").textContent="";
+$("mu").value="0.7";$("vari").value="1.5";
+$("gamma").value="0.05";$("inv").value="0";S.gamma=0.05;S.inv=0;S.slip=0;
+if($("slipInfo"))$("slipInfo").textContent="";
+if($("dDelta"))$("dDelta").value="0.02";
+if($("dLevels"))$("dLevels").value="3";
+if($("dSize"))$("dSize").value="40";
+if($("dGamma"))$("dGamma").value="0.04";
+if($("dcon"))$("dcon").value="YES";
+if($("dside"))$("dside").value="BUY";
+if($("dtype"))$("dtype").value="LIMIT";
+if($("dprice"))$("dprice").value="0.5";
+if($("dsize"))$("dsize").value="20";
+if($("pegChk"))$("pegChk").checked=true;
+S.peg=true;
+if($("mDelta"))$("mDelta").value="0.02";
+if($("mEps"))$("mEps").value="0.01";
+if($("mQmax"))$("mQmax").value="400";
+if($("mFee"))$("mFee").value="0.003";
+initMergeDesk();
+S.active={A:true,B:false,C:true,D:true,M:true};
+[["tgA","A","pA"],["tgB","B","pB"],["tgC","C","pC"],["tgD","D","pD"],["tgM","M","pM"]].forEach(function(item){
+var btn=$(item[0]),panel=$(item[2]),active=S.active[item[1]];
+if(btn)btn.classList.toggle("on",!!active);
+if(panel)panel.style.display=active?"":"none";
+});
+S.mv="both";
+document.querySelectorAll("[data-mv]").forEach(function(x){
+x.classList.toggle("on",x.dataset.mv==="both");
+});
+if($("botN"))$("botN").value="1000";
+if($("botSeed"))$("botSeed").value="7";
+if($("botRate"))$("botRate").value="1";
+S.botsOn=true;S.botRate=1;
+if($("botTgl")){$("botTgl").classList.add("on");$("botTgl").textContent="Bots: ON";}
+initBots(1000,7);
+S.idx=0;
+$("speed").value="350";
+if($("playBtn")){$("playBtn").textContent="▶ Play";$("playBtn").classList.remove("on");}
+S.playing=false;
+if($("settleOut"))$("settleOut").innerHTML="";
+S.pos={YES:0,NO:0};
+S.pnl={};S.statOrd=0;S.statFill=0;
+S.eqH={};S.netH={};
+S.statDir={BY:0,SY:0,BN:0,SN:0};
+resetBookAll();
+log("↺ Đã reset toàn bộ thông số, cash MM và vị thế về mặc định ban đầu.");
+renderAll();
+}
 /* ================= wire up ================= */
 function tg(id,key,panel){$(id).onclick=function(){S.active[key]=!S.active[key];
-$(id).classList.toggle("on",S.active[key]);if(panel)$(panel).style.display=S.active[key]?"":"none";renderAll();};}
+$(id).classList.toggle("on",S.active[key]);if(panel)$(panel).style.display=S.active[key]?"":"none";if(S.peg)refreshLiq(fairAt(S.idx));renderAll();};}
 function init(){
 if(typeof MATCHES==="undefined"||!MATCHES||!MATCHES.length){
 document.querySelector(".wrap").innerHTML="<div class='card'><h2>Lỗi data</h2><p>Không có MATCHES nhúng. Hãy mở file đã build.</p></div>";return;}
 buildSel();
 tg("tgA","A","pA");tg("tgB","B","pB");tg("tgC","C","pC");tg("tgD","D","pD");tg("tgM","M","pM");
+[["tgA","A","pA"],["tgB","B","pB"],["tgC","C","pC"],["tgD","D","pD"],["tgM","M","pM"]].forEach(function(item){
+var btn=$(item[0]),panel=$(item[2]),active=S.active[item[1]];
+if(btn)btn.classList.toggle("on",!!active);
+if(panel)panel.style.display=active?"":"none";
+});
 document.querySelectorAll("[data-mv]").forEach(function(b){b.onclick=function(){
 document.querySelectorAll("[data-mv]").forEach(function(x){x.classList.remove("on");});
 b.classList.add("on");S.mv=b.dataset.mv;renderAll();};});
@@ -987,7 +1131,7 @@ $("toOpen").onclick=function(){stopT();S.idx=0;if(S.peg)refreshLiq(fairAt(0));re
 $("toClose").onclick=function(){stopT();S.idx=cur().tl.length-1;renderAll();};
 $("scrub").oninput=function(){stopT();S.idx=parseInt(this.value,10);renderAll();};
 $("speed").onchange=function(){if(S.playing)startT();};
-["axg","bxg","skew","mu","vari","mDelta","mEps","mQmax","mFee"].forEach(function(id){var e=$(id); if(e) e.oninput=renderAll;});
+["axg","bxg","skew","mu","vari","mDelta","mEps","mQmax","mFee","dDelta","dLevels","dSize","dGamma"].forEach(function(id){var e=$(id); if(e) e.oninput=function(){if(S.peg)refreshLiq(fairAt(S.idx));renderAll();};});
 $("gamma").oninput=function(){S.gamma=parseFloat(this.value);renderAll();};
 $("inv").oninput=function(){S.inv=clamp(parseInt(this.value,10)||0,-100,100);renderAll();};
 $("buyBtn").onclick=function(){cTrade("buy");};$("sellBtn").onclick=function(){cTrade("sell");};
@@ -1006,8 +1150,10 @@ for(var k=0;k<500&&S.idx<cur().tl.length-1;k++)step(1);
 log("⏩ Burst bots: tới tick "+S.idx+".");};
 $("botClear").onclick=function(){S.bots=[];log("🧹 Đã xóa bots (giữ fills/PnL đã phát sinh).");renderPnL();};
 $("botRate").oninput=function(){S.botRate=parseFloat(this.value)||1;};
+if($("resetAllBtn"))$("resetAllBtn").onclick=resetAll;
 initBots(1000,7);
-loadMatch(S.mi||0);startT();}
+loadMatch(S.mi||0);
+stopT();}
 document.addEventListener("DOMContentLoaded",init);
 </script>
 </body>
