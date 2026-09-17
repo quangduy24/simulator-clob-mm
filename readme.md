@@ -141,22 +141,46 @@ Nút **Fit A theo fair**: giữ tổng bàn thắng `S = AxG+BxG`, tìm `d = AxG
 bằng chia đôi 24 vòng sao cho `pCover((S+d)/2, (S−d)/2) = fair`.
 VD đã chạy: fair `0.504` @H `0.75` → `d ≈ +1.08` (dương: chủ mạnh hơn ✔).
 
-### B · Normal μ/σ² (từ `interactive_…_6b16…`)
+### B · Normal Goal-Difference Model (Mô hình Hiệu số Bàn thắng Phân phối Chuẩn)
 
-Hiệu số bàn thắng `D ~ N(μ, σ²)`, Φ là CDF chuẩn (xấp xỉ erf Abramowitz–Stegun):
+Khác với Model A tiếp cận rời rạc qua 2 biến ngẫu nhiên Poisson ($AxG, BxG$), Model B mô hình hóa trực tiếp biến chênh lệch bàn thắng liên tục (Goal Difference):
+$$\Delta G = G_{\text{Home}} - G_{\text{Away}} \sim \mathcal{N}(\mu, \sigma^2)$$
 
-```
-cover ⟺ D + homeLine > 0 ⟺ D > −homeLine
-line nguyên/nửa:  p = 1 − Φ(−homeLine; μ, σ)
-line quarter (H·2 không nguyên, VD −0.75):
-  tách thành homeLine±0.25 (VD −0.5 và −1.0), p = trung bình 2 cửa
-margin  = 0.02 + 0.015·variance   (bất định càng lớn, spread càng rộng)
-fairOdds = 1/p
-bidOdds  = 1/min(p·(1+margin), 0.99)   (user Lay)
-askOdds  = 1/max(p·(1−margin), 0.01)   (user Back)
-```
+Trong đó:
+- $\mu$ (`mu`): Kỳ vọng chênh lệch bàn thắng giữa đội chủ nhà và đội khách (VD: $\mu = 0.7$ thể hiện niềm tin đội chủ nhà vượt trội ~0.7 bàn).
+- $\sigma^2$ (`vari` / variance): Phương sai bàn thắng thể hiện mức độ bất định và biến động của trận đấu. Độ lệch chuẩn tương ứng: $\sigma = \sqrt{\sigma^2}$.
 
-Kiểm chuẩn: `μ = 0.7, var = 1.5, H = 0` → `p = Φ(0.7/√1.5) ≈ 0.7162` ✔.
+#### 1. Quy tắc tính xác suất Home-Cover theo tỷ lệ Handicap
+Đội chủ nhà cover handicap khi hiệu số thực tế cộng với tỷ lệ chấp dương:
+$$\Delta G + \text{homeLine} > 0 \iff \Delta G > -\text{homeLine} = H \quad (\text{với } \text{homeLine} = -H)$$
+
+Xác suất $p$ được tính phụ thuộc vào loại kèo Handicap:
+- **Kèo nguyên quả và kèo nửa trái (`isQuarter = false`, VD: 0.0, 0.5, 1.0, 1.5...)**:
+  $$p = P(\Delta G > -\text{homeLine}) = 1 - \Phi\left(\frac{-\text{homeLine} - \mu}{\sigma}\right) = 1 - \text{ncdf}(-\text{homeLine}, \mu, \sigma)$$
+  Hàm tích lũy chuẩn tắc $\Phi(z)$ được xấp xỉ chính xác bằng khai triển Abramowitz & Stegun qua hàm sai số `erf`.
+- **Kèo Quarter / Kèo 1/4 & 3/4 (`isQuarter = true`, VD: ±0.25, ±0.75, ±1.25...)**:
+  Do kèo quarter có cơ chế chia nửa vốn vào 2 mốc kèo kề nhau $l_1 = \text{homeLine} - 0.25$ và $l_2 = \text{homeLine} + 0.25$, xác suất thắng kỳ vọng là trung bình cộng xác suất cover của 2 mốc:
+  $$p = 0.5 \cdot \left[ \left(1 - \Phi\left(\frac{-l_1 - \mu}{\sigma}\right)\right) + \left(1 - \Phi\left(\frac{-l_2 - \mu}{\sigma}\right)\right) \right]$$
+  Hàm `clamp(p, 0.01, 0.99)` đảm bảo xác suất luôn nằm trong miền hợp lệ.
+
+#### 2. Cơ chế Margin Động & Định giá Sổ lệnh CLOB
+- **Margin thích ứng rủi ro phương sai (Dynamic Variance Margin)**:
+  $$\text{margin} = 0.02 + 0.015 \cdot \sigma^2$$
+  - Khi trận đấu có độ phân tán cao ($\sigma^2$ lớn, khó dự đoán), MM B tự động nới rộng margin để bảo vệ trước rủi ro bị "bắt bài" (adverse selection).
+  - Khi trận đấu chặt chẽ ($\sigma^2$ nhỏ), margin được co hẹp lại nhằm tạo odds cạnh tranh hơn.
+- **Tính toán Odds Decimal & Giá Limit**:
+  - Odds công bằng: $O_{\text{fair}} = \frac{1}{p}$
+  - Odds đặt cửa Lay (MM mua YES, người chơi Lay):
+    $$O_{\text{bid}} = \frac{1}{\min(p \cdot (1 + \text{margin}), 0.99)} \implies P_{\text{bid}} = \frac{1}{O_{\text{bid}}} = \min(p \cdot (1 + \text{margin}), 0.99)$$
+  - Odds đặt cửa Back (MM bán YES, người chơi Back):
+    $$O_{\text{ask}} = \frac{1}{\max(p \cdot (1 - \text{margin}), 0.01)} \implies P_{\text{ask}} = \frac{1}{O_{\text{ask}}} = \max(p \cdot (1 - \text{margin}), 0.01)$$
+- **Tạo lập thị trường CLOB**: MM B đẩy 2 lệnh Limit resting size 50 vào sổ YES: BUY YES @ $P_{\text{bid}}$ và SELL YES @ $P_{\text{ask}}$ (hiển thị tag `◈B`).
+
+#### 3. Thuật toán Tự Động Hiệu Chỉnh (Fit B)
+Nút **Fit B** chạy thuật toán Binary Search 24 bước lặp trên đoạn $\mu \in [-1, 3]$:
+- Tại mỗi vòng lặp, lấy $\mu_{\text{mid}} = \frac{\text{lo} + \text{hi}}{2}$, tính $p_{\text{model}} = \text{modelB}(\mu_{\text{mid}}, \sigma^2, \text{homeLine}).\text{mid}$.
+- Cập nhật biên: nếu $p_{\text{model}} < p_{\text{fair}}(t)$ thì $\text{lo} = \mu_{\text{mid}}$, ngược lại $\text{hi} = \mu_{\text{mid}}$.
+- Kết quả tìm được $\mu^*$ khớp chính xác với xác suất thị trường sharp $p_{\text{fair}}$ tại tick hiện tại (kiểm chuẩn: `μ = 0.7, var = 1.5, H = 0` → `p = Φ(0.7/√1.5) ≈ 0.7162` ✔).
 
 ### C · Avellaneda–Stoikov CLOB (từ `interactive_…_819e…`, mặc định bật)
 
@@ -207,36 +231,70 @@ Mỗi tick (nếu checkbox peg bật) làm mới BASE+MM theo fair/H(t) mới,
 UI đặt lệnh & MM-D: Param δ/Tầng/Size/γ · HĐ (YES/NO) · Side (BUY/SELL) · Kiểu (LIMIT/MARKET) · Price · Size ·
 Place · Hủy theo id · sổ hiển thị gộp theo mức giá (size cộng dồn, ×n lệnh, gắn nhãn MM & Ghost).
 
-### M · Merge Arb (chiến lược Polymarket Y+N=1, mặc định bật)
+### M · Merge Arbitrage Desk (Chiến lược Bù trừ & Tái chế Hoàn chỉnh Polymarket Y+N=1)
 
-Desk giữ `Y, N, cash` (khởi split 1000/1000/1000 từ vốn 2000). Luật `1 Yes + 1 No = 1 pUSD` cho 3 việc cùng kho:
+MM-M là mô hình Market Maker tích hợp Desk kinh doanh chênh lệch giá (Arbitrage Desk) dựa trên nguyên lý bù trừ nhị phân đặc trưng của các sàn dự đoán (như Polymarket).
 
-```
-1 Quote   — bán bộ đắt hơn 1: aY+aN = 1+2δ
-2 Merge arb — mua bộ rẻ hơn 1: aY+aN < 1−ε rồi merge
-3 Recycle — min(Y,N) cặp → pUSD
-```
+#### 1. Nguyên lý Bất biến Nhị phân & Quản trị Vốn
+- **Định lý hoàn chỉnh**: $1\text{ YES} + 1\text{ NO} \equiv 1\text{ pUSD}$. Nắm giữ đủ một cặp YES và NO có thể đổi thành 1 pUSD tiền mặt tại bất kỳ thời điểm nào.
+- **Tự nhập vốn MM (`#mInitCash`) & Auto-Split 50/50**:
+  - Người dùng tự do nhập tổng vốn ban đầu $C_{\text{total}}$ (mặc định 2000, có thể nhập từ 100 đến 50.000).
+  - Hệ thống tự động chia đôi $50/50$ ngay khi nhập:
+    - Tiền mặt: $\text{cash} = C_{\text{total}} - \text{split}$
+    - Cặp token hoàn chỉnh: $Y = \text{split}$, $N = \text{split}$ (với $\text{split} = \text{round}(C_{\text{total}} / 2)$).
+  - Badge trực quan `#mSplitBadge` cập nhật tức thời: `Split: 1000 cash + 1000 Y/N`.
+  - Hạch toán khởi tạo luôn đạt trạng thái trung hòa:
+    $$\text{Equity}_0 = \text{cash} + f \cdot Y + (1 - f) \cdot N - C_{\text{total}} = 0.0\text{ u} \quad \forall f \in (0, 1)$$
 
-Giá khớp được `bY,bN,aY,aN`:
+#### 2. Quy trình Vận hành 6 Bước Ưu tiên Mỗi Tick (`runMergeDesk`)
+Mỗi tick, Merge Desk thực thi lần lượt 6 tác vụ theo trật tự ưu tiên từ cao xuống thấp:
 
-```
-bY+bN > 1  → bán bộ (spread)   Π = Q·(bY+bN−1)
-aY+aN < 1  → mua bộ (arb)     Π = Q·(1−aY−aN)
-bY+bN ≤1≤ aY+aN → chỉ quote
-```
+1. **Bước 1 — An toàn Sổ lệnh (Self-Cross Protection)**:
+   - Nếu phát hiện sổ lệnh bị chéo giá ($b_Y \ge a_Y$ hoặc $b_N \ge a_N$), MM-M lập tức hủy toàn bộ lệnh quote của mình (`dropOwner("MM-M")`) để tránh rủi ro tự khớp bất lợi hoặc rối loạn định giá.
+2. **Bước 2 — Clean Merge Arbitrage (Ăn chênh lệch phi rủi ro)**:
+   - Điều kiện: Tổng giá bán tốt nhất của 2 cửa nhỏ hơn giá trị hoàn vốn 1 pUSD trừ biên an toàn $\varepsilon$ và phí giao dịch:
+     $$a_Y + a_N < 1 - \varepsilon - 2 \cdot \text{fee}$$
+   - Khối lượng giải ngân tối đa:
+     $$Q = \min\left(\text{size}(a_Y), \text{size}(a_N), \left\lfloor\frac{\text{cash}}{a_Y + a_N + 2 \cdot \text{fee}}\right\rfloor, 50\right)$$
+   - Thực thi: Bắn đồng thời 2 lệnh MARKET BUY trên sổ YES @ $a_Y$ và sổ NO @ $a_N$.
+   - Khi khớp $M = \min(\text{fills}_Y, \text{fills}_N)$ cặp, desk lập tức gộp (merge) thành tiền mặt:
+     $$Y \leftarrow Y - M, \quad N \leftarrow N - M, \quad \text{cash} \leftarrow \text{cash} + M$$
+   - Lợi nhuận khóa cứng ngay lập tức:
+     $$\Pi_{\text{arb}} = M \cdot (1 - a_Y - a_N) - M \cdot 2 \cdot \text{fee} > 0$$
+3. **Bước 3 — Cân kho kết hợp Arbitrage (Arb + Inventory Flattening)**:
+   - Đo lường độ lệch vị thế: $q = Y - N$.
+   - **Nếu $q > 30$ (đang dư YES)**: Nếu bên NO đang có giá bán rẻ ($a_N < 0.62$), MM-M gửi MARKET BUY NO (size $\le 30$) để ghép cặp với lượng YES dư sẵn, sau đó lập tức merge thành tiền mặt.
+   - **Nếu $q < -30$ (đang dư NO)**: Nếu bên YES đang rẻ ($a_Y < 0.62$), MM-M gửi MARKET BUY YES (size $\le 30$) ghép cặp với lượng NO dư sẵn rồi merge ra tiền mặt.
+   - $\to$ Vừa giải tỏa áp lực tồn kho lệch hướng (directional risk) vừa tối ưu hóa lợi nhuận.
+4. **Bước 4 — Trải Lệnh Tạo Lập Thị Trường 4 Chiều (4-Sided Quoting)**:
+   - Reservation price có tính đến inventory skew:
+     $$r = \text{clamp}(fair - q \cdot \gamma \cdot 0.08, 0.08, 0.92)$$
+   - Đặt đồng thời 4 lệnh LIMIT size 50 đối xứng hoàn hảo trên cả 2 sổ (ký hiệu ◈MM-M):
+     - Sổ YES: BID YES @ $b_Y = \text{clamp}(r - \delta, 0.02, 0.98)$, ASK YES @ $a_Y = \text{clamp}(r + \delta, 0.02, 0.98)$
+     - Sổ NO: BID NO @ $b_N = \text{clamp}(1 - a_Y, 0.02, 0.98)$, ASK NO @ $a_N = \text{clamp}(1 - b_Y, 0.02, 0.98)$
+   - Đặc tính: Luôn bảo đảm $b_Y + a_N = 1.00$ và $a_Y + b_N = 1.00$, cung cấp thanh khoản đối ứng toàn diện cho thị trường.
+5. **Bước 5 — Tái chế Token Hoàn chỉnh (Inventory Recycling)**:
+   - Khi lượng cặp token hoàn chỉnh tích lũy trong kho vượt mức: $m_{\text{rec}} = \min(Y, N) > 80$:
+     - Rút $\text{take} = \min(m_{\text{rec}} - 50, 60)$ cặp ra khỏi kho và merge thành tiền mặt:
+       $$Y \leftarrow Y - \text{take}, \quad N \leftarrow N - \text{take}, \quad \text{cash} \leftarrow \text{cash} + \text{take}$$
+     - Tái tạo thanh khoản tiền mặt dồi dào để luôn sẵn sàng cho các cơ hội arbitrage lớn tiếp theo.
+6. **Bước 6 — Cắt Lệch Vị Thế Khẩn Cấp (Emergency De-skew / FAK)**:
+   - Khi độ lệch kho vượt ngưỡng an toàn $|q| > Q_{\text{max}}$:
+     - Gửi lệnh MARKET (Fill-And-Kill) theo giá tốt nhất của sổ để bán bớt phía dư thừa, kéo $|q|$ lùi về trong giới hạn cho phép.
 
-Vòng vận hành mỗi tick (đúng thứ tự ưu tiên spec §5):
+#### 3. Cấu trúc Lợi nhuận & Hạch toán Tài chính
+Tổng PnL của Desk được phân rã thành 4 dòng tiền rõ ràng:
+$$\Pi_{\text{total}} = \Pi_{\text{spread}} + \Pi_{\text{arb}} + \Pi_{\text{rebate}} + \Pi_{\text{inv}}$$
+- $\Pi_{\text{spread}}$: Thu nhập từ chênh lệch giá mua bán $\delta$ khi 2 bên thị trường khớp vào quote của desk.
+- $\Pi_{\text{arb}}$: Lợi nhuận phi rủi ro từ các pha clean merge arbitrage ($a_Y + a_N < 1$).
+- $\Pi_{\text{rebate}}$: Phí hoàn trả nhận được khi đóng vai trò Maker trong các giao dịch.
+- $\Pi_{\text{inv}}$: Biến động giá trị ròng của lượng tồn kho chưa cân bằng theo giá fair thị trường.
 
-```
-1 An toàn: bY≥aY → hủy quote
-2 Arb sạch: aY+aN < 1−ε−2·fee và đủ cash → mua Q=min(askY,askN,cash/sum) 2 phía, merge
-3 Arb+flatten: |q|>30 và phía thiếu rẻ (a<0.62) → mua đúng phía đó, merge với hàng dư
-4 Quote: r = clamp(fair − q·γ·σ²)  (q=Y−N, γ=0.05, σ²=0.08), bY=r−δ, aY=r+δ, bN=1−aY, aN=1−bY
-5 Recycle: min(Y,N)>80 → merge min−50 (cap 60)
-6 Cắt lệch: |q|>Qmax → MARKET đóng FAK
-```
+Định giá ròng Mark-To-Market (MTM) theo fair từng tick:
+$$\text{Equity}(f) = \text{cash} + f \cdot Y + (1 - f) \cdot N - C_{\text{total}}$$
+Và tất toán cuối trận theo tỷ lệ nhị phân phân đoạn:
+$$\text{Settled} = \text{cash} + P_{\text{YES}} \cdot Y + (1 - P_{\text{YES}}) \cdot N - C_{\text{total}}$$
 
-Quote M nằm thật trong sổ 4 phía (YES bid/ask + NO bid/ask, size 50, ◈). Taker arb trả fee, maker được rebate. PnL ngày: `Π_spread+Π_arb+Π_rebate+Π_inv` — thắng khi 3 số đầu > |Π_inv|.
 
 ## 6. Depth và Buy/Sell: từ sổ thật
 

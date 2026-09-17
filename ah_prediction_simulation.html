@@ -121,6 +121,8 @@ footer{color:var(--sub);font-size:11px;letter-spacing:.03em;padding:6px 2px}
 <label class="note"><input type="checkbox" id="pegChk" checked> Neo fair</label>
 </div>
 <div class="row" style="margin-top:8px" id="pM">
+<label>Vốn MM</label><input type="number" id="mInitCash" value="2000" min="100" max="50000" step="100" style="width:72px" title="Tổng vốn MM ban đầu">
+<span class="note kv" id="mSplitBadge" style="color:var(--gold2);padding:2px 6px;background:rgba(201,169,106,.12);border-radius:4px">Split: 1000 cash + 1000 Y/N</span>
 <label>δ spread</label><input type="number" id="mDelta" value="0.02" min="0.005" max="0.08" step="0.005" style="width:64px">
 <label>ε arb</label><input type="number" id="mEps" value="0.01" min="0" max="0.05" step="0.005" style="width:64px">
 <label>Qmax</label><input type="number" id="mQmax" value="400" min="50" max="1000" step="50" style="width:64px">
@@ -305,12 +307,18 @@ else d.cash+=q*d.rebate;
 if(role==="maker") d.rebatePnL+=q*d.rebate; else d.spreadPnL-=q*d.fee;
 }
 function initMergeDesk(){var d=S.mDesk;
+var total=parseFloat($("mInitCash")?$("mInitCash").value:2000);
+if(isNaN(total)||total<=0) total=2000;
+d.initCash=total;
+d.split=Math.round(total/2);
 d.cash=d.initCash - d.split; d.Y=d.split; d.N=d.split;
 d.arb=0;d.recyc=0;d.spreadPnL=0;d.arbPnL=0;d.rebatePnL=0;d.eqH={};d.qH={};
-d.delta=parseFloat($("mDelta").value)||0.02;
-d.eps=parseFloat($("mEps").value)||0.01;
-d.Qmax=parseInt($("mQmax").value)||400;
-d.fee=parseFloat($("mFee").value)||0.003;}
+d.delta=parseFloat($("mDelta")?$("mDelta").value:0.02)||0.02;
+d.eps=parseFloat($("mEps")?$("mEps").value:0.01)||0.01;
+d.Qmax=parseInt($("mQmax")?$("mQmax").value:400,10)||400;
+d.fee=parseFloat($("mFee")?$("mFee").value:0.003)||0.003;
+if($("mSplitBadge")) $("mSplitBadge").textContent="Split: "+d.cash+" cash + "+d.split+" Y/N";
+}
 function submitClob(c,side,price,size,type,owner){
 owner=owner||"USER";type=type||"LIMIT";
 var o={id:S.oid++,c:c,side:side,price:price,size:size,left:size,seq:S.seq++,owner:owner,type:type};
@@ -1064,6 +1072,7 @@ if($("dprice"))$("dprice").value="0.5";
 if($("dsize"))$("dsize").value="20";
 if($("pegChk"))$("pegChk").checked=true;
 S.peg=true;
+if($("mInitCash"))$("mInitCash").value="2000";
 if($("mDelta"))$("mDelta").value="0.02";
 if($("mEps"))$("mEps").value="0.01";
 if($("mQmax"))$("mQmax").value="400";
@@ -1131,7 +1140,8 @@ $("toOpen").onclick=function(){stopT();S.idx=0;if(S.peg)refreshLiq(fairAt(0));re
 $("toClose").onclick=function(){stopT();S.idx=cur().tl.length-1;renderAll();};
 $("scrub").oninput=function(){stopT();S.idx=parseInt(this.value,10);renderAll();};
 $("speed").onchange=function(){if(S.playing)startT();};
-["axg","bxg","skew","mu","vari","mDelta","mEps","mQmax","mFee","dDelta","dLevels","dSize","dGamma"].forEach(function(id){var e=$(id); if(e) e.oninput=function(){if(S.peg)refreshLiq(fairAt(S.idx));renderAll();};});
+if($("mInitCash")) $("mInitCash").oninput=function(){initMergeDesk();if(S.peg)refreshLiq(fairAt(S.idx));renderAll();};
+["axg","bxg","skew","mu","vari","mDelta","mEps","mQmax","mFee","dDelta","dLevels","dSize","dGamma"].forEach(function(id){var e=$(id); if(e) e.oninput=function(){if(id==="mDelta"||id==="mEps"||id==="mQmax"||id==="mFee")initMergeDesk();if(S.peg)refreshLiq(fairAt(S.idx));renderAll();};});
 $("gamma").oninput=function(){S.gamma=parseFloat(this.value);renderAll();};
 $("inv").oninput=function(){S.inv=clamp(parseInt(this.value,10)||0,-100,100);renderAll();};
 $("buyBtn").onclick=function(){cTrade("buy");};$("sellBtn").onclick=function(){cTrade("sell");};
