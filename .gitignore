@@ -1,0 +1,10 @@
+# Secrets — không bao giờ commit key
+.env
+
+# Output sinh ra bởi pipeline Jev batch (lớn, tái tạo được)
+data/jev_windows.jsonl
+data/jev_features.jsonl
+data/jev_eval.json
+
+__pycache__/
+*.pyc

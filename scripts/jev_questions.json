@@ -1,0 +1,56 @@
+{
+  "regime": {
+    "type": "choice",
+    "instructions": "Which market regime best describes `ticks`, `divergence` and `events` over this odds window?",
+    "criteria": {
+      "stable": "Probabilities flat, small moves, no line change, sharp and public agree",
+      "steam_sharp": "Fast directional move driven by sharp ticks (s=1), momentum building",
+      "drift_public": "Slow drift with public/sharp disagreement, gap widening",
+      "reversal": "Direction changed inside the window (up then down or vice versa)",
+      "choppy": "Large up-down oscillation, high volatility, no clear direction",
+      "no_clear": "None of the above fits clearly"
+    }
+  },
+  "momentum": {
+    "type": "score",
+    "instructions": "How strong is directional momentum in `ticks` judged by `p_first`, `p_last` and `slope`?",
+    "criteria": [
+      "Calm: net change near zero, slope flat, moves are noise",
+      "Moderate directional drift: visible net move but with pullbacks",
+      "Strong directional momentum: large persistent move, slope steep, little pullback"
+    ]
+  },
+  "toxicity": {
+    "type": "score",
+    "instructions": "How toxic (informed adverse-selection risk) is order flow in `ticks` judged by sharp participation, `gap` and `events`?",
+    "criteria": [
+      "Benign noise: mostly public ticks, small gap, no steam events",
+      "Mixed: some sharp activity or moderate gap, possible informed flow",
+      "Highly toxic: dominant sharp ticks, large gap, steam or repeated line-change events"
+    ]
+  },
+  "is_steam": {
+    "type": "noul",
+    "instructions": "Is there a steam move in `ticks` and `events` (fast sharp-driven jump in p over few ticks)?",
+    "criteria": {
+      "true": "Sharp ticks push p quickly in one direction with a steam event",
+      "false": "No fast sharp-driven jump; moves are slow or public-led"
+    }
+  },
+  "is_public_fade": {
+    "type": "noul",
+    "instructions": "Given `divergence`, should a market maker fade the public (trust sharp over public ticks)?",
+    "criteria": {
+      "true": "Public last price disagrees with sharp median by a meaningful gap, sharp more credible",
+      "false": "Public and sharp agree, or gap is noise, or sharp sample too thin"
+    }
+  },
+  "line_unstable": {
+    "type": "noul",
+    "instructions": "Is the handicap line unstable in `ticks` (multiple H changes making current fair unreliable)?",
+    "criteria": {
+      "true": "Two or more distinct H values or repeated line-change events in the window",
+      "false": "Line flat (one H value), fair over the window is stable"
+    }
+  }
+}
