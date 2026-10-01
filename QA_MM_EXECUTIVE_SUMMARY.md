@@ -1,116 +1,182 @@
-BÁO CÁO TỔNG HỢP & GÓP Ý 5 THUẬT TOÁN MM GỬI ANH DUY
+# TỔNG HỢP KỸ THUẬT: 5 THUẬT TOÁN MM & ĐỐI CHIẾU PLAN MVB 3 THÁNG
 
-Gửi anh Duy,
-
-Em vừa chạy automation test các luồng chính của 5 thuật toán Market Maker (MM) và sổ lệnh CLOB trong file simulation HTML trên bộ dữ liệu chứa 90 trận mẫu. Các hàm toán nền như de-vig, Poisson, ncdf và settleMult cho kết quả đúng ở các test case đã kiểm tra. Tuy nhiên, em chưa đánh giá bản hiện tại là sẵn sàng ráp thẳng vào Backend vì còn một số lỗi về bid/ask, đồng bộ inventory, settlement AH và execution hai chân của merge arbitrage.
-
-Dưới đây em tổng hợp lại kết quả kiểm tra từng thuật toán, 2 lỗi ban đầu bắt được qua Playwright, các blocker bổ sung khi đối chiếu code và hướng đề xuất để chuẩn bị ráp vô Backend theo đúng plan 3 tháng anh nhé.
-
-File thông số chi tiết đo lường từng trận em để ở đây: QA_MM_DETAILED_METRICS.md
----
-
-1. ĐÁNH GIÁ 5 THUẬT TOÁN MM VÀ KHẢ NĂNG RÁP BACKEND
-
-1.1. Model A (Poisson xG)
-+ Đánh giá của em: Phần phân phối Poisson độc lập và ma trận tỉ số 0-0 đến 10-10 chạy đúng theo công thức đang cài đặt. Tuy nhiên cần chốt rõ contract settlement AH: Model A đang dùng fair = pWin + 0.5 * pHalfWin, trong khi phần PnL của simulation dùng payout phân đoạn 1 / 0.75 / 0.5 / 0.25 / 0. Hai cách này chưa cùng một định nghĩa giá trị kỳ vọng. Fit A cũng làm tròn AxG/BxG còn 1 chữ số nên fair sau fit có thể lệch target.
-+ Khả năng lên BE: Phù hợp làm tín hiệu fair pre-match. Chi phí ma trận 11 x 11 không phải blocker lớn ở quy mô nhỏ; hạn chế chính cho in-play là model chưa có state phút thi đấu, tỉ số hiện tại, thẻ đỏ và thời gian còn lại. Khi port cần giữ nghiệm xG full precision trong state, chỉ làm tròn khi hiển thị, và xử lý/chuẩn hóa phần xác suất tail trên 10 bàn.
-
-1.2. Model B (Normal Goal-Difference)
-+ Đánh giá của em: Công thức xác suất chạy nhẹ và cách lấy trung bình hai line cho kèo quarter là một approximation hợp lý. Tuy nhiên code hiện đang gán bidP = p * (1 + margin) và askP = p * (1 - margin), làm Bid > Ask khi margin dương; ví dụ test ra Bid 0.5047 > Ask 0.4635. Đây là lỗi nghiêm trọng khiến Model B tự tạo crossed book. Ngoài ra phân phối chuẩn liên tục không có point mass tại hiệu số bàn thắng nguyên, nên xác suất push chỉ là xấp xỉ chứ không phải AH exact.
-+ Khả năng lên BE: Có tiềm năng làm fair signal nhanh cho in-play, nhưng chỉ sau khi sửa chiều bid/ask, chốt semantics push/quarter payout và bổ sung state live. Chưa nên bật Model B trong MVB production ở trạng thái hiện tại.
-
-1.3. Model C (Inventory Skew, lấy cảm hứng từ Avellaneda-Stoikov)
-+ Đánh giá của em: Công thức reservation price phản ứng đúng chiều với q trong test thủ công. Tuy nhiên đây mới là heuristic A-S-inspired, chưa phải công thức Avellaneda-Stoikov đầy đủ vì chưa dùng time horizon, volatility động và order-arrival intensity để tính spread tối ưu. Quan trọng hơn, q dùng để quote hiện là S.inv và chỉ được cập nhật trong nút trade thủ công; fill từ bots/engine chỉ đi vào S.pnl nên Model C chưa phản ứng theo inventory thật của mọi fill.
-+ Kết quả slippage L1 = 0.000 chỉ chứng minh lệnh size 20 không vượt thanh khoản tầng đầu trong case đó, chưa đủ kết luận execution luôn tốt.
-+ Khả năng lên BE: Inventory skew là thành phần bắt buộc, nhưng phải lấy position từ fill ledger thống nhất và requote ngay sau fill trước khi đưa vào MVB.
-
-1.4. Model D (CLOB Ladder Quoting)
-+ Đánh giá của em: Báo giá đa tầng L1-L3 và các cặp quote do D tạo ra thỏa b_Y + a_N = 1 và a_Y + b_N = 1. Ghost Asks hiển thị thanh khoản implied trực quan. Đây là bất biến của quote riêng Model D, không có nghĩa toàn bộ best book luôn giữ tổng 1.00 khi còn lệnh từ model/user khác.
-+ Khả năng lên BE: Phù hợp làm lớp quote construction tạo depth cho MVB, nhưng cần đứng sau một lớp risk/reconciliation chung để kiểm tra tick size, balance/token reservation, post-only, self-trade prevention và cancel/replace. Ghost liquidity chỉ nên là derived view hoặc implied matching, không được đếm trùng thanh khoản.
-
-1.5. Model M (Merge Arbitrage Desk)
-+ Đánh giá của em: Nguyên lý split một đơn vị collateral thành cặp Y/N và merge cặp trở lại collateral là đúng. Auto-split 50/50 giữ equity khởi tạo trung hòa theo công thức simulation. Tuy nhiên cách chia 50/50 là policy treasury của bot, không phải một chuẩn bắt buộc của Polymarket.
-+ Hai lệnh mua YES và NO hiện được gửi tuần tự, không atomic; một chân có thể fill còn chân kia fail/partial và tạo leg risk. Quote cũng chưa reserve cash/token, nên chưa thể kết luận bot “không bao giờ cạn tiền mặt”. Model M chỉ giữ quan hệ bù trừ cho quote riêng của mình, không thể bảo đảm toàn thị trường luôn có tổng giá đúng 1.00.
-+ Khả năng lên BE: Có giá trị cho treasury/recycling và arb, nhưng nên chạy replay/shadow trước. Khi lên BE cần FOK/preflight cho hai chân, xử lý partial fill, balance reservation, fee/gas thật, idempotency và reconciliation sau settlement.
+> Đối chiếu mã nguồn: [ah_prediction_simulation.html](file:///d:/Okas/okas-source/simulator-clob-mm/ah_prediction_simulation.html) · Báo cáo chi tiết: [QA_MM_DETAILED_METRICS.md](file:///d:/Okas/okas-source/simulator-clob-mm/QA_MM_DETAILED_METRICS.md)
 
 ---
 
-2. CÁC VẤN ĐỀ LOGIC EM PHÁT HIỆN ĐƯỢC TRONG QUÁ TRÌNH TEST
+## 1. THUẬT TOÁN CỐT LÕI MVB (THÁNG 1 - 2)
 
-2.1. Lỗi sổ lệnh bị chéo giá làm ngắt Model M (Nghiêm trọng nhất)
-- Hiện tượng: Khi em bật song song Model A (đang để thông số xG mặc định, tự tính giá bán Ask YES = 0.44) cùng với Model D hoặc Model C (đang neo theo fair thị trường mua Bid YES = 0.47), sổ lệnh lập tức bị chéo: Bid 0.47 > Ask 0.44.
-- Hậu quả: Trong hàm runMergeDesk, Bước 1 có cơ chế bảo vệ nếu b_Y >= a_Y thì gọi dropOwner("MM-M") và dừng. Vì vậy khi bật đồng thời Model A chưa Fit, Model M bị ngắt hoàn toàn, không thể quote và không thể săn arbitrage được.
-- Đề xuất của em:
-  + Trên giao diện HTML: Khi nạp trận hoặc bật Model A, mình nên cho tự động chạy Fit A một lần để đồng bộ xG theo fair thị trường.
-  + Trên Backend thật: Khi Bot MM đẩy lệnh Maker vào, Matching Engine của BE cần cho so khớp triệt tiêu ngay các lệnh đối ứng bị chéo (Clean Crossing) trước khi lưu lệnh dư vào sổ resting, không để xảy ra tình trạng Bid > Ask cùng nằm trong sổ.
+### 1.1. Model D: CLOB Multi-Level Ladder & Dual Orderbook
+*Báo giá 3 tầng (L1–L3) 4 phía đối ứng bảo toàn chẵn lẻ nhị phân `YES + NO = 1.00`.*
 
-2.2. Lỗi nút Fit A và Fit B không tự cập nhật lại sổ lệnh
-- Hiện tượng: Khi em bấm Fit A hoặc Fit B, hai hàm này tính xong bisection thì chỉ gán số mới vào ô input trên màn hình rồi gọi renderAll(), nhưng lại quên gọi refreshLiq(fairAt(S.idx)).
-- Hậu quả: Số trên ô input đã đổi nhưng lệnh của MM-A và MM-B trong sổ lệnh và trên đồ thị Depth vẫn là lệnh cũ, phải bấm tiến sang tick sau thì sổ mới cập nhật.
-- Đề xuất của em:
-  + Em thấy chỉ cần thêm một dòng gọi làm mới thanh khoản trước khi render là giải quyết xong:
-    if (S.peg) refreshLiq(fairAt(S.idx));
+* **Tham số cấu hình (`CONFIG.MODELS.D`):**
+  | Biến | Kiểu | Giá trị | Ý nghĩa kỹ thuật |
+  | :--- | :--- | :--- | :--- |
+  | `DEF_DELTA` | `number` | `0.02` | Bước giá phân tầng spread ($\Delta$) |
+  | `DEF_LEVELS` | `number` | `3` | Số tầng báo giá mỗi bên ($k \in \{0, 1, 2\}$) |
+  | `DEF_SIZE` | `number` | `40` | Khối lượng đặt tại mỗi tầng |
+  | `DEF_GAMMA` | `number` | `0.04` | Hệ số phạt lệch tồn kho |
+  | `SKEW_SCALE` | `number` | `0.08` | Độ nhạy điều chỉnh giá theo tồn kho |
 
-2.3. Các lỗi/blocker bổ sung phát hiện khi đối chiếu code
-- Model B đảo chiều spread: bidP > askP khi margin dương, tự tạo crossed book ngay cả khi chạy riêng.
-- Model C không dùng inventory từ fill ledger: q chỉ đổi qua thao tác manual C, không đổi theo fill của bots/user qua engine.
-- Settlement AH chưa thống nhất: simulation dùng payout YES 1 / 0.75 / 0.5 / 0.25 / 0, còn module AH-MVP Backend đang phân loại half-win = Yes, half-loss = No, push = Void. Cần chốt contract rule trước khi tính fair/PnL.
-- Model M không thực thi quote như một bước atomic trong runMergeDesk; quote được post trước bots/arb nên có thể stale sau khi inventory đổi. Hai chân arb tuần tự có partial-fill risk.
-- Ngoài Fit A/B, thao tác đổi gamma/inventory C và scrub/to-close timeline cũng có thể render UI nhưng chưa cancel/replace quote tương ứng.
+* **Trạng thái & Logic tính toán (`postClobQuotes` / `modelD`):**
+  ```javascript
+  // 1. Tính tồn kho ròng và reservation price r:
+  const qD = (pD.YES.b - pD.YES.s) - (pD.NO.b - pD.NO.s);
+  const r = clamp(fair - qD * gamma * SKEW_SCALE, 0.03, 0.97);
 
----
-
-3. KẾ HOẠCH RÁP MM VÔ BACKEND DẠNG PLUGIN THEO PLAN 3 THÁNG
-
-Theo đúng định hướng làm bản MVB trước mà anh dặn, em phác thảo cách tổ chức module bot MM để cắm vào Backend OKAS như sau:
-
-3.1. Thiết kế Plugin Interface bằng TypeScript
-Em đề xuất tạo một interface chuẩn để sau này anh em mình viết thêm model mới chỉ cần implement theo khung này:
-
-```typescript
-export interface MarketMakerPlugin {
-  readonly metadata: PluginMetadata;
-  init(context: PluginContext): Promise<void>;
-  evaluate(context: QuoteContext): Promise<QuotePlan>;
-  onEvent(event: MarketEvent | OrderEvent | FillEvent): Promise<void>;
-  snapshot(): Promise<PluginState>;
-  shutdown(reason: ShutdownReason): Promise<void>;
-}
-```
-
-Plugin chỉ trả về desired QuotePlan; không tự gọi exchange. Một Coordinator/Risk/Reconciler chung sẽ kiểm tra sequence/timestamp, market status, tick/lot size, balance đã reserve, inventory/Qmax, post-only/FOK/FAK, self-cross, clientOrderId/idempotency rồi mới cancel/replace hoặc submit vào CLOB.
-
-Không nên coi A/B/C/D/M là 5 plugin ngang hàng cùng tự đẩy quote. Hướng ghép phù hợp hơn:
-- A/B: fair-value signal.
-- C: inventory/risk adjustment.
-- D: ladder/quote construction.
-- M: treasury, split/merge và arbitrage riêng.
-- Coordinator trung tâm: hợp nhất output, chống self-cross và quản lý order lifecycle.
-
-3.2. Lộ trình triển khai cụ thể
-
-- Tháng 1: Chốt contract AH, sửa Simulation & Đóng gói Core Toán học
-  + Chốt một semantics duy nhất cho full-win/half-win/push/half-loss/full-loss giữa smart contract, Backend và simulation.
-  + Sửa Model B crossed spread, Model C inventory ledger, Fit/stale quote và execution Model M.
-  + Viết Unit/Property Test cho devig, settleMult, ncdf, pois, fair payout, bid < ask, conservation Y/N/collateral và các boundary ±0.25.
-  + Tách fair signal, inventory adjustment, quote plan và execution/risk thành module riêng.
-
-- Tháng 2: Dựng Service Bot MM nội bộ trên Backend (Mục tiêu MVB)
-  + Dựng Coordinator, Risk Engine, balance reservation, idempotent order gateway, cancel/replace, reconciliation và kill switch.
-  + Đưa Model D đi cùng inventory/risk Model C ngay từ đầu; không chạy ladder production khi chưa có giới hạn tồn kho.
-  + Cho Model M chạy replay/shadow trước, test riêng partial fill và lỗi một chân arb.
-  + Kết nối API/WebSocket nội bộ sau khi có contract rõ ràng với Matching Engine.
-
-- Tháng 3: Canary/Testnet & Hoàn thiện sản phẩm MVB
-  + Chạy Model M với limit nhỏ sau khi test atomicity/recovery; thêm A/B làm fair signal sau khi Model B được sửa và calibration đạt yêu cầu.
-  + Tích hợp Dashboard theo dõi realized/unrealized PnL, cash/token available và reserved, inventory, stale quote, reject rate, latency, partial fills và kill-switch state.
-  + Chạy replay đủ 90 trận, load/soak, disconnect/reconnect, event trùng/out-of-order và testnet Polygon Amoy trước canary.
-  + Đóng gói Docker để chuẩn bị cho giai đoạn scale tiếp theo.
+  // 2. Ladder 4 phía (Bids/Asks YES & NO):
+  for (let k = 0; k < levels; k++) {
+    const off = delta * (k + 1);
+    const by = clamp(r2(r - off), 0.01, 0.99), ay = clamp(r2(r + off), 0.01, 0.99);
+    bidsY.push(by); asksY.push(ay);
+    bidsN.push(clamp(r2(1 - ay), 0.01, 0.99)); // b_N = 1 - a_Y (Ghost asks)
+    asksN.push(clamp(r2(1 - by), 0.01, 0.99)); // a_N = 1 - b_Y
+  }
+  // Invariant xác thực: b_Y(k) + a_N(k) === 1.00 && a_Y(k) + b_N(k) === 1.00
+  ```
 
 ---
 
-4. BƯỚC TIẾP THEO
+### 1.2. Model M: Merge Arbitrage Desk & Capital Recycling
+*Săn lệch giá xuyên cặp (Clean Merge Arb) và hoàn vốn tiền mặt theo chuẩn CTF.*
 
-+ Anh Duy xem qua các lỗi và blocker em note ở trên xem hướng xử lý như vậy đã hợp ý anh chưa nhé; nếu phần nào chưa đúng với contract/plan Backend hiện tại thì anh phản hồi để em cập nhật lại test specification.
-+ Trước khi ráp Backend, mình cần thêm repo/API contract của Matching Engine vì repo OKAS hiện có trong workspace là frontend kết nối tới managed CLOB, chưa có Local Matching Engine để kiểm chứng tích hợp end-to-end.
-+ Khi anh nghiên cứu xong paper và chốt contract settlement AH, anh em mình thống nhất Interface Plugin/Coordinator ở Mục 3 rồi mới ráp khung module vào Backend để tránh lặp lại crossed quote giữa các strategy.
+* **Tham số cấu hình (`CONFIG.MODELS.M`):**
+  | Biến | Kiểu | Giá trị | Ý nghĩa kỹ thuật |
+  | :--- | :--- | :--- | :--- |
+  | `DEF_CASH` / `initCash` | `number` | `2000` | Vốn khởi tạo (Split 50/50: 1000 cash + 1000 Y/N) |
+  | `DEF_DELTA` / `DEF_EPS` | `number` | `0.02` / `0.01` | Half-spread quote / Ngưỡng tối thiểu kích hoạt Arb |
+  | `DEF_FEE` / `DEF_REBATE`| `number` | `0.003` / `0.001`| Phí giao dịch taker (0.3%) / Rebate maker (0.1%) |
+  | `MAX_ARB_QTY` | `number` | `50` | Size trần cho mỗi lệnh Merge Arb |
+  | `IMBALANCE_TRIGGER` | `number` | `30` | Ngưỡng kích hoạt mua bù lệch kho $\|q\| > 30$ |
+  | `CHEAP_PRICE_CEIL` | `number` | `0.62` | Giá trần để mua token gom bộ |
+  | `RECYCLE_TRIGGER` / `CHUNK` | `number` | `80` / `60` | Điều kiện recycle ($\min(Y,N) > 80$) / Size mỗi đợt rút |
+  | `DEF_QMAX` | `number` | `400` | Giới hạn rủi ro tồn kho tối đa trước khi cut market |
+
+* **Luồng thực thi (`runMergeDesk`):**
+  ```javascript
+  // BƯỚC 1: Self-cross safety
+  if (bY >= aY || bN >= aN) { dropOwner("MM-M"); return; }
+
+  // BƯỚC 2: Clean Merge Arbitrage
+  const sumA = aY + aN;
+  if (sumA < 1 - d.eps - d.fee * 2) {
+    const Q = Math.min(szY, szN, Math.floor(d.cash / (sumA + d.fee * 2)), 50);
+    submitClob("YES", "BUY", aY, Q, "MARKET", "MM-M");
+    submitClob("NO",  "BUY", aN, Q, "MARKET", "MM-M");
+    recycleDeskTokens(d, filled); // d.Y -= filled; d.N -= filled; d.cash += filled;
+    d.arbPnL += filled * (1 - sumA) - filled * d.fee * 2;
+  }
+
+  // BƯỚC 3: Cân kho (Flatten khi q = d.Y - d.N lệch)
+  if (q > 30 && aN < 0.62) { /* Mua NO gom bộ */ }
+  else if (q < -30 && aY < 0.62) { /* Mua YES gom bộ */ }
+
+  // BƯỚC 4: Tái chế (Recycle ra cash)
+  if (Math.min(d.Y, d.N) > 80) recycleDeskTokens(d, Math.min(Math.min(d.Y, d.N) - 50, 60));
+
+  // BƯỚC 5: Cắt lệch vị thế khẩn cấp
+  if (Math.abs(q) > d.Qmax) submitClob("YES", side, px, need, "MARKET", "MM-M");
+  ```
+
+---
+
+## 2. CÁC MODEL NHÁNH R&D (GIAI ĐOẠN 2)
+
+*Duy trì mô phỏng kiểm chuẩn lý thuyết; chưa đưa vào production MVB.*
+
+| Model | Tham số chính | Công thức định giá cốt lõi | Hiện trạng & Rủi ro |
+| :--- | :--- | :--- | :--- |
+| **Model A** *(Poisson xG)* | `MAX_K = 10`<br>`HALF_SPREAD = 0.025`<br>`SKEW_SCALE = 0.08` | $\text{fair} = \sum_{k=0}^{10}\sum_{m=0}^{10} \text{Poi}(k; \lambda_A)\text{Poi}(m; \lambda_B) \cdot \text{settleMult}(k, m, hl)$<br>`bidP = mid - 0.025`, `askP = mid + 0.025` | **Cần calibrate:** `fitA()` làm tròn 1 chữ số gây lệch fair `0.0186`. Cần full precision state. |
+| **Model B** *(Normal Diff)* | `BASE_MARGIN = 0.02`<br>`VAR_SCALE = 0.015`<br>$\mu = 0.7, \sigma^2 = 1.5$ | $\text{margin} = 0.02 + 0.015 \cdot \sigma^2$<br>$p = \Phi\left(\frac{hl - \mu}{\sigma}\right)$ (kèo đơn) | **BLOCKER (Bug B0):** Đảo dấu `bidP > askP`. Tuyệt đối chưa kích hoạt production. |
+| **Model C** *(Avellaneda-Stoikov)* | `SKEW_SCALE = 0.08`<br>`BASE_HS = 0.02`<br>`GAMMA_SCALE = 0.1` | $r = \text{clamp}(\text{fair} - q \cdot \gamma \cdot 0.08, 0.02, 0.98)$<br>$\text{hs} = 0.02 + \gamma \cdot 0.1$<br>`bid = r - hs`, `ask = r + hs` | **Cần fix ledger:** Biến `S.inv` không đồng bộ với Fill Ledger của `submitClob`. |
+
+---
+
+## 3. BẢNG MÃ LỖI, BIẾN LIÊN QUAN & CODE SỬA
+
+### Bug 1: Crossed Book (`Best Bid > Best Ask`) làm tê liệt Model M
+* **Biến liên quan:** `S.book.YES.bids[0].price`, `S.book.YES.asks[0].price`, `modelA().askP`, `modelD().bidP`.
+* **Nguyên nhân:**
+  * `MM-A` mặc định (`axg = 1.8, bxg = 1.1`) quote `askP = 0.44`.
+  * `MM-D` neo theo fair (`0.489`) quote `bidP = 0.47`.
+  * Push trực tiếp mảng `S.book` không qua matching $\rightarrow$ `Bid (0.47) > Ask (0.44)`.
+  * `runMergeDesk()` phát hiện `bY >= aY` kích hoạt `dropOwner("MM-M")` $\rightarrow$ hủy toàn bộ lệnh Model M.
+* **Code sửa:**
+  ```javascript
+  // Fix 1: Tự động chạy fitA khi nạp trận để kéo axg, bxg khớp fair thị trường
+  function initMatchState() {
+    // ...
+    fitA(); 
+    refreshLiq(fairAt(0));
+  }
+
+  // Fix 2: Trên Backend, mọi order entry bắt buộc qua matching triệt tiêu crossing trước khi resting:
+  if (side === "BUY" && price >= effAsk) matchImmediately();
+  ```
+
+---
+
+### Bug 2: `fitA()` & `fitB()` đổi tham số nhưng lệnh resting không đổi (Stale Book)
+* **Biến liên quan:** `DOM.setVal("axg")`, `DOM.setVal("bxg")`, `DOM.setVal("mu")`, `S.book`.
+* **Nguyên nhân:** Sau khi giải nghiệm bisection, hàm chỉ set value DOM và `renderAll()`, thiếu gọi `refreshLiq()`.
+* **Code sửa:**
+  ```diff
+   function fitA() {
+     // ... solver d ...
+     DOM.setVal("axg", r2((s + d) / 2).toFixed(1));
+     DOM.setVal("bxg", r2((s - d) / 2).toFixed(1));
+  +  if (S.peg) refreshLiq(fairAt(S.idx));
+     renderAll();
+   }
+
+   function fitB() {
+     // ... solver mu ...
+     DOM.setVal("mu", mu);
+  +  if (S.peg) refreshLiq(fairAt(S.idx));
+     renderAll();
+   }
+  ```
+
+---
+
+### Bug 3: Model B bị đảo chiều Bid/Ask (`bidP > askP`)
+* **Biến liên quan:** `modelB().bidP`, `modelB().askP`, `margin`.
+* **Nguyên nhân:** `bidO = 1 / (p * (1 + margin))` $\rightarrow$ `bidP = 1 / bidO = p * (1 + margin) > p` (Bid cao hơn Ask).
+* **Code sửa:**
+  ```diff
+   function modelB(mu, vr, hl) {
+     // ...
+     const margin = cfg.BASE_MARGIN + cfg.VAR_SCALE * vr;
+  -  const bidO = 1 / Math.min(p * (1 + margin), 0.99);
+  -  const askO = 1 / Math.max(p * (1 - margin), 0.01);
+  -  return { mid: p, back: askO, lay: bidO, bidP: 1 / bidO, askP: 1 / askO };
+  +  const bidP = clamp(r2(p * (1 - margin)), cfg.CLAMP_MIN, cfg.CLAMP_MAX);
+  +  const askP = clamp(r2(p * (1 + margin)), cfg.CLAMP_MIN, cfg.CLAMP_MAX);
+  +  return { mid: p, bidP: bidP, askP: askP, back: 1 / askP, lay: 1 / bidP };
+   }
+  ```
+
+---
+
+### Bug 4: Model C không đồng bộ Inventory từ Fill Engine
+* **Biến liên quan:** `S.inv`, `S.pnl["MM-C"]`.
+* **Nguyên nhân:** Panel C dùng `S.inv`, nhưng `submitClob` khớp lệnh bot chỉ ghi vào `S.pnl["MM-C"]`.
+* **Code sửa:**
+  ```diff
+   function getInventoryC() {
+  -  return S.inv;
+  +  const p = S.pnl["MM-C"];
+  +  return p ? (p.YES.b - p.YES.s) : 0;
+   }
+  ```
+
+---
+
+## 4. CHECKLIST KỸ THUẬT BACKEND PLUGIN (THÁNG 1 - 2 MVB)
+
+1. **Interface `ModelDQuoter`:**
+   * Input: `fairPrice: decimal`, `inventory: decimal`, `delta: decimal = 0.02`, `levels: int = 3`.
+   * Output: `OrderList [Buy/Sell YES, Buy/Sell NO]` bảo đảm bất biến $P_{\text{YES}} + P_{\text{NO}} = 1.00$.
+2. **Interface `MergeArbitrageDesk`:**
+   * State: `cashBalance: decimal`, `lockedYES: decimal`, `lockedNO: decimal`.
+   * Execution: Quét orderbook $\rightarrow$ Atomic execute cặp lệnh `BUY YES + BUY NO` $\rightarrow$ invoke `mergeTokens()` hoàn vốn về cash.
